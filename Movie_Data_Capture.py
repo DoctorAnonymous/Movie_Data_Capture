@@ -20,7 +20,20 @@ from opencc import OpenCC
 from scraper import get_data_from_json
 from ADC_function import file_modification_days, get_html, parallel_download_files
 from number_parser import get_number
-from core import core_main, core_main_no_net_op, moveFailedFolder, debug_print
+from core import core_main, core_main_no_net_op, moveFailedFolder, debug_print, print_files
+
+
+def check_update(local_version):
+    htmlcode = get_html("https://api.github.com/repos/yoshiko2/Movie_Data_Capture/releases/latest")
+    data = json.loads(htmlcode)
+    remote = int(data["tag_name"].replace(".", ""))
+    local_version = int(local_version.replace(".", ""))
+    if local_version < remote:
+        print("[*]" + ("* New update " + str(data["tag_name"]) + " *").center(54))
+        print("[*]" + "↓ Download ↓".center(54))
+        print("[*]https://github.com/yoshiko2/Movie_Data_Capture/releases")
+        print("[*]======================================================")
+
 
 def argparse_function(ver: str) -> typing.Tuple[str, str, str, str, bool, bool, str, str]:
     conf = config.getInstance()
@@ -523,6 +536,8 @@ def main(args: tuple) -> Path:
     print('[*]======================================================')
     print('[*]' + platform_total)
     print('[*]======================================================')
+    print('[*] - 严禁在墙内宣传本项目 - ')
+    print('[*]======================================================')
 
     start_time = time.time()
     print('[+]Start at', time.strftime("%Y-%m-%d %H:%M:%S"))
@@ -542,6 +557,39 @@ def main(args: tuple) -> Path:
                     ) if not single_file_path else ('-', 'Single File', '', '', ''))
           )
 
+    if conf.update_check():
+        try:
+            check_update(version)
+            # Download Mapping Table, parallel version
+
+            def fmd(f) -> typing.Tuple[str, Path]:
+                return ('https://raw.githubusercontent.com/yoshiko2/Movie_Data_Capture/master/MappingTable/' + f,
+                        Path.home() / '.local' / 'share' / 'mdc' / f)
+
+            map_tab = (fmd('mapping_actor.xml'), fmd('mapping_info.xml'), fmd('c_number.json'))
+            for k, v in map_tab:
+                if v.exists():
+                    if file_modification_days(str(v)) >= conf.mapping_table_validity():
+                        print("[+]Mapping Table Out of date! Remove", str(v))
+                        os.remove(str(v))
+            res = parallel_download_files(((k, v) for k, v in map_tab if not v.exists()))
+            for i, fp in enumerate(res, start=1):
+                if fp and len(fp):
+                    print(f"[+] [{i}/{len(res)}] Mapping Table Downloaded to {fp}")
+                else:
+                    print(f"[-] [{i}/{len(res)}] Mapping Table Download failed")
+        except:
+            print("[!]" + " WARNING ".center(54, "="))
+            print('[!]' + '-- GITHUB CONNECTION FAILED --'.center(54))
+            print('[!]' + 'Failed to check for updates'.center(54))
+            print('[!]' + '& update the mapping table'.center(54))
+            print("[!]" + "".center(54, "="))
+            try:
+                etree.parse(str(Path.home() / '.local' / 'share' / 'mdc' / 'mapping_actor.xml'))
+            except:
+                print('[!]' + "Failed to load mapping table".center(54))
+                print('[!]' + "".center(54, "="))
+
     create_failed_folder(conf.failed_folder())
 
     # create OpenCC converter
@@ -558,6 +606,7 @@ def main(args: tuple) -> Path:
         for i in search_list:
             json_data = get_data_from_json(i, oCC, None, None)
             debug_print(json_data)
+            print_files(path='JAV_output\%s' % i.upper(), leak_word='', c_word='', naming_rule=json_data.get('naming_rule'), part='', cn_sub=False, json_data=json_data, filepath='', tag=json_data.get('tag'), actor_list=json_data.get('actor_list'), liuchu=False, uncensored=0, hack=False, hack_word='', _4k=False, fanart_path='', poster_path='', thumb_path='', iso=False)
             time.sleep(int(config.getInstance().sleep()))
         os._exit(0)
 
@@ -654,12 +703,12 @@ if __name__ == '__main__':
                 (扫描电影数, 已处理, 完成数) = 分析结果元组 = tuple(分析日志文件(logfile))
                 if all(isinstance(v, int) for v in 分析结果元组):
                     剩余个数 = 扫描电影数 - 已处理
-                    总用时 = timedelta(seconds = time.time() - app_start)
+                    总用时 = timedelta(seconds=time.time() - app_start)
                     print(f'All movies:{扫描电影数}  processed:{已处理}  successes:{完成数}  remain:{剩余个数}' +
-                        '  Elapsed time {}'.format(
-                        period(总用时, "{d} day {h}:{m:02}:{s:02}") if 总用时.days == 1
-                            else period(总用时, "{d} days {h}:{m:02}:{s:02}") if 总用时.days > 1
-                            else period(总用时, "{h}:{m:02}:{s:02}")))
+                          '  Elapsed time {}'.format(
+                              period(总用时, "{d} day {h}:{m:02}:{s:02}") if 总用时.days == 1
+                              else period(总用时, "{d} days {h}:{m:02}:{s:02}") if 总用时.days > 1
+                              else period(总用时, "{h}:{m:02}:{s:02}")))
                     if 剩余个数 == 0:
                         break
                     下次运行 = datetime.now() + timedelta(seconds=再运行延迟)
@@ -674,4 +723,5 @@ if __name__ == '__main__':
 
     if not conf.auto_exit():
         if sys.platform == 'win32':
-            input("Press enter key exit, you can check the error message before you exit...")
+            pass
+            # input("Press enter key exit, you can check the error message before you exit...")
